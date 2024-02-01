@@ -30,13 +30,25 @@ function lineArg(entity) {
 
 (async () => {
   try {
+    console.log("Fetching train information...");
     const response = await axios.get(url);
     const data = response.data;
     const entities = data.entity;
     const filteredEntities = entities.filter(isActive).filter(isSubway).filter(lineArg);
 
     let routes = {};
-    // return entites grouped by route id
+    if (process.argv[2]) {
+      routes[process.argv[2].toUpperCase()] = [];
+    } else {
+    for (let entity of entities) {
+      for (let informed of (entity.alert.informed_entity || [])) {
+	if (informed.agency_id === "MTASBWY") {
+          routes[informed.route_id] = [];
+        }
+      }
+    }
+    }
+
     for (let entity of filteredEntities) {
       const informedEntities = (entity.alert.informed_entity || []).filter(informed => informed.agency_id === "MTASBWY");
       const routeIds = informedEntities.map(informed => informed.route_id).filter(Boolean);
@@ -45,9 +57,23 @@ function lineArg(entity) {
         routes[routeId].push(entity);
       }
     }
+    const goodService = Object.entries(routes).filter(([routeId, entities]) => !entities.length);
+    if (goodService.length) {
+      console.log('');
+      console.log(`Good service: ${goodService.map(([routeId])=> routeId).filter(Boolean).join(', ')}`);
+      console.log('');
+    }
 
     for (let [routeId, entities] of Object.entries(routes)) {
-      console.log(routeId);
+      if (!entities.length) {
+	continue;
+      }
+      console.log(`${routeId} train status:`);
+
+      if (!entities.length) {
+	console.log("  Good service");
+      }
+
       for (let entity of entities) {
         const text = entity.alert.header_text.translation.find(translation => translation.language === 'en').text;
         const activePeriods = entity.alert.active_period.map(period => ({
@@ -55,7 +81,6 @@ function lineArg(entity) {
           end: new Date(period.end * 1000).toLocaleString(),
         }));
         console.log("  " + text);
-        //console.log(activePeriods);
       }
     }
   } catch (error) {
